@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/archip-io/deployment/api-gateway/internal/cfg"
@@ -12,28 +11,24 @@ import (
 
 var (
 	cfgPath = flag.String("cfg", "./configs/cfg.yaml", "config file path")
-	addres  = flag.String("addr", ":8080", "http service address")
+	port    = flag.String("port", "8080", "http service address")
 )
 
 func main() {
+	//fmt.Println("hello world")
 	flag.Parse()
 
-	t := string("{\"err\":123}")
-
-	var val map[string]interface{}
-
-	err := json.Unmarshal([]byte(t), &val)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(val)
+	//fmt.Println(*cfgPath)
+	//fmt.Println(*port)
+	addres := fmt.Sprintf(":%s", *port, *port)
 
 	file, err := os.Open(*cfgPath)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
 	cfgs, err := cfg.GetCfgs(file)
 
 	if err != nil {
@@ -46,7 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = proxy.ListenConnections(*addres, backs)
+	err = proxy.ListenConnections(addres, backs)
 
 	if err != nil {
 		log.Fatal(err)
