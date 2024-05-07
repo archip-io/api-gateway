@@ -3,8 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/archip-io/deployment/api-gateway/internal/cfg"
-	"github.com/archip-io/deployment/api-gateway/internal/proxy"
+	"github.com/archip-io/deployment/api-gateway/internal/api-gateway/cfg"
+	"github.com/archip-io/deployment/api-gateway/internal/api-gateway/proxy"
 	"log"
 	"os"
 )

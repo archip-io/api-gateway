@@ -25,6 +25,8 @@ func NewBalancer() *Balancer {
 
 const maxIter = 1000
 
+var ServiceUnavailable = errors.New("no backends available")
+
 func (b *Balancer) GetBack() (*Backend, error) {
 
 	for iter := 0; iter < maxIter; iter++ {
@@ -34,7 +36,7 @@ func (b *Balancer) GetBack() (*Backend, error) {
 
 		if len(b.backends) == 0 {
 			b.rw.RUnlock()
-			return nil, errors.New("no backends available")
+			return nil, ServiceUnavailable
 		}
 		backend := b.backends[i%len(b.backends)]
 
@@ -43,10 +45,10 @@ func (b *Balancer) GetBack() (*Backend, error) {
 			return backend, nil
 		}
 
-		b.rw.Unlock()
+		b.rw.RUnlock()
 	}
 
-	return nil, errors.New("no available backend")
+	return nil, ServiceUnavailable
 }
 
 func (b *Balancer) AddBackend(backend *Backend) {

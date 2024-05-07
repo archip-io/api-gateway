@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -26,7 +25,7 @@ var InvalidToken = errors.New("invalid token")
 
 var bearerTokenPrefix = "Bearer "
 
-func GetBearerToken(r *http.Request) (string, error) {
+func getBearerToken(r *http.Request) (string, error) {
 	authVal := r.Header.Get("Authorization")
 
 	if len(authVal) < len(bearerTokenPrefix) || authVal[:len(bearerTokenPrefix)] != bearerTokenPrefix {
@@ -36,9 +35,44 @@ func GetBearerToken(r *http.Request) (string, error) {
 	return authVal[len(bearerTokenPrefix):], nil
 }
 
-func CheckAuth(r *http.Request, g *Gateway) (bool, error) {
+var maxAuthIter = 1000
 
-	token, err := GetBearerToken(r)
+func doAuthRequest(autService *Service, path string, tokenJson []byte) (int, error) {
+
+	for range maxAuthIter {
+		back, err := autService.Backends.GetBack()
+		if err != nil {
+			break
+		}
+
+		body := bytes.NewBuffer(bytes.Clone(tokenJson))
+
+		req, err := http.NewRequest(http.MethodGet, back.URL.String()+path, body)
+		if err != nil {
+			continue
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			if back.Alive.Swap(false) {
+				autService.Backends.RemoveBackend(back)
+			}
+			continue
+		}
+
+		return resp.StatusCode, nil
+
+	}
+
+	return http.StatusServiceUnavailable, nil
+
+}
+
+func checkAuth(r *http.Request, g *Gateway) (bool, error) {
+
+	token, err := getBearerToken(r)
 	if err != nil {
 		return false, err
 	}
@@ -49,32 +83,15 @@ func CheckAuth(r *http.Request, g *Gateway) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	body := bytes.NewBuffer(taSer)
-	back, err := g.authService.Backends.GetBack()
+	code, err := doAuthRequest(g.authService, g.service.RequireCheck.Path, taSer)
 
-	if err != nil {
-		return false, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, back.URL.String()+g.service.RequireCheck.Path, body)
-	if err != nil {
-		return false, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-
-	return resp.StatusCode == http.StatusOK, nil
+	return code == http.StatusOK, nil
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if g.service.RequireCheck != nil {
-		ok, err := CheckAuth(r, g)
+		ok, err := checkAuth(r, g)
 		if err != nil && errors.Is(err, InvalidToken) || !ok {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
@@ -92,8 +109,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.WithValue(r.Context(), backKey, back)
-
-	fmt.Println(back, err)
 
 	back.Proxy.ServeHTTP(w, r.WithContext(ctx))
 }
@@ -134,7 +149,6 @@ func checkBackends(ss Services) {
 func ListenConnections(addr string, backs Services) error {
 
 	mux := http.NewServeMux()
-	fmt.Println(backs)
 
 	for n, service := range backs.services {
 		g := &Gateway{service: service}

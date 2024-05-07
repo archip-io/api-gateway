@@ -2,8 +2,9 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/archip-io/deployment/api-gateway/internal/cfg"
+	"github.com/archip-io/deployment/api-gateway/internal/api-gateway/cfg"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -64,8 +65,11 @@ func ConsiderDelete(writer http.ResponseWriter, request *http.Request, _ error, 
 	}
 
 	newBackend, err := balancer.GetBack()
-	if err != nil {
+	if errors.Is(err, ServiceUnavailable) {
 		http.Error(writer, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		return
+	} else if err != nil {
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
