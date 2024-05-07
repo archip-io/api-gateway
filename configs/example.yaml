@@ -1,0 +1,11 @@
+services:
+  - service: "/"
+    urls:
+      - "http://localhost:8080"
+      - "http://localhost:8082"
+  - service: "/echo"
+    urls:
+      - "http://localhost:8080"
+    require-auth:
+      name: "/"
+      path: ""
