@@ -48,7 +48,7 @@ func GetBackFromContext(r *http.Request) *Backend {
 	return nil
 }
 
-func ConsiderDelete(writer http.ResponseWriter, request *http.Request, e error, balancer *Balancer) {
+func ConsiderDelete(writer http.ResponseWriter, request *http.Request, _ error, balancer *Balancer) {
 	retries := GetRetryFromContext(request)
 	back := GetBackFromContext(request)
 
@@ -89,36 +89,47 @@ func FormBackend(urlRaw string, errHandler func(writer http.ResponseWriter, requ
 	return back, nil
 }
 
+func ProcessService(serviceCfg cfg.ServiceCfg) (*Service, error) {
+
+	curService := &Service{RequireCheck: serviceCfg.CS, Backends: NewBalancer()}
+
+	if serviceCfg.URLs == nil || len(serviceCfg.URLs) == 0 {
+		return nil, fmt.Errorf("service %s has no URLs", serviceCfg.Name)
+	}
+
+	for _, u := range serviceCfg.URLs {
+
+		backend, err := FormBackend(u, func(writer http.ResponseWriter, request *http.Request, e error) {
+			ConsiderDelete(writer, request, e, curService.Backends)
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		curService.Backends.AddBackend(backend)
+	}
+
+	return curService, nil
+
+}
+
 func GetBackends(cfgs cfg.ServicesConfigs) (Services, error) {
 
 	backs := Services{services: make(map[string]*Service, len(cfgs.Services))}
 
 	for _, service := range cfgs.Services {
-		curService := &Service{RequireCheck: service.CS, Backends: NewBalancer()}
-
 		_, ok := backs.services[service.Name]
 		if ok {
 			return Services{}, fmt.Errorf("duplicate service name: %s", service.Name)
 		}
 
-		if service.URLs == nil || len(service.URLs) == 0 {
-			return Services{}, fmt.Errorf("service %s has no URLs", service.Name)
+		newService, err := ProcessService(service)
+		if err != nil {
+			return Services{}, err
 		}
+		backs.services[service.Name] = newService
 
-		for _, u := range service.URLs {
-
-			backend, err := FormBackend(u, func(writer http.ResponseWriter, request *http.Request, e error) {
-				ConsiderDelete(writer, request, e, curService.Backends)
-			})
-
-			if err != nil {
-				return Services{}, err
-			}
-
-			curService.Backends.AddBackend(backend)
-		}
-
-		backs.services[service.Name] = curService
 	}
 
 	for _, service := range backs.services {

@@ -24,14 +24,24 @@ type ToAuth struct {
 
 var InvalidToken = errors.New("invalid token")
 
-func CheckAuth(r *http.Request, g *Gateway) (bool, error) {
+var bearerTokenPrefix = "Bearer "
+
+func GetBearerToken(r *http.Request) (string, error) {
 	authVal := r.Header.Get("Authorization")
 
-	if len(authVal) < 7 || authVal[:7] != "Bearer " {
-		return false, InvalidToken
+	if len(authVal) < len(bearerTokenPrefix) || authVal[:len(bearerTokenPrefix)] != bearerTokenPrefix {
+		return "", InvalidToken
 	}
 
-	token := authVal[7:]
+	return authVal[len(bearerTokenPrefix):], nil
+}
+
+func CheckAuth(r *http.Request, g *Gateway) (bool, error) {
+
+	token, err := GetBearerToken(r)
+	if err != nil {
+		return false, err
+	}
 
 	ta := ToAuth{token}
 
@@ -134,13 +144,6 @@ func ListenConnections(addr string, backs Services) error {
 		mux.Handle(n, g)
 		log.Println(n)
 	}
-
-	//mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	//	fmt.Println(r.URL)
-	//
-	//	http.Error(w, "Not found123123", http.StatusNotFound)
-	//	return
-	//})
 
 	go checkBackends(backs)
 
